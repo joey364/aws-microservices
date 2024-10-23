@@ -1,1 +1,1 @@
-template-file-path: ./lab-template.yaml
+template-file-path: ./cloudformation/iam-automation-template.yaml
