@@ -149,8 +149,8 @@ Resources:
 Outputs:
   EC2PasswordSecretArn:
     Description: ARN of the Secrets Manager secret for EC2User's password
-    Value: !Ref OneTimePassword
+    Value: !Sub "Email: {{resolve:ssm:${EC2UserEmailParameter}}}, Password: {{resolve:secretsmanager:${OneTimePassword}::password}}"
 
   S3UserPasswordSecretArn:
     Description: ARN of the Secrets Manager secret for S3User's password
-    Value: !Ref S3UserPasswordSecret
+    Value: !Sub "Email: {{resolve:ssm:${S3UserEmailParameter}}}, Password: {{resolve:secretsmanager:${OneTimePassword}::password}}"
