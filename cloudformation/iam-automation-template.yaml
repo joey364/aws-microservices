@@ -101,11 +101,11 @@ Resources:
           def handler(event, context):
               ssm = boto3.client("ssm")
               secretsmanager = boto3.client("secretsmanager")
+              print(event)
 
               for record in event["Records"]:
-                  user_name = record["detail"]["userName"]
-                  email_param = f"/emails/{user_name}"
-                  email = ssm.get_parameter(Name=email_param, WithDecryption=False)["Parameter"]["Value"]
+                  user_name = record['detail']['requestParameters']['userName']
+                  email = ssm.get_parameter(Name=f"/users/{user_name}/email")['Parameter']['Value']
 
                   password = secretsmanager.get_secret_value(SecretId=f"{user_name}Password")["SecretString"]
                   password = json.loads(password)["password"]
