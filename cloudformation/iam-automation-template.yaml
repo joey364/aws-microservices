@@ -10,6 +10,7 @@ Resources:
             - s3:GetObject
             - s3:ListObject
           Resource: "*"
+
   EC2ReadOnlyPolicy:
     Type: AWS::IAM::ManagedPolicy
     Properties:
@@ -26,27 +27,31 @@ Resources:
             - ec2:DescribeImages
             - ec2:DescribeAddresses
           Resource: "*"
+
   S3Group:
     Type: AWS::IAM::Group
     Properties:
       GroupName: S3Group
       ManagedPolicyArns:
         - !Ref S3ReadOnlyPolicy
+
   EC2Group:
     Type: AWS::IAM::Group
     Properties:
       GroupName: EC2Group
       ManagedPolicyArns:
         - !Ref EC2ReadOnlyPolicy
+
   EC2User:
     Type: AWS::IAM::User
     Properties:
       Groups:
         - !Ref EC2Group
-      UserName: user113
+      UserName: ec2-user
       LoginProfile:
         Password: !Sub "{{resolve:secretsmanager:${OneTimePassword}::password}}"
         PasswordResetRequired: true
+
   S3User:
     Type: AWS::IAM::User
     Properties:
@@ -56,6 +61,7 @@ Resources:
       LoginProfile:
         Password: !Sub "{{resolve:secretsmanager:${OneTimePassword}::password}}"
         PasswordResetRequired: true
+
   OneTimePassword:
     Type: AWS::SecretsManager::Secret
     Properties:
@@ -65,16 +71,21 @@ Resources:
         GenerateStringKey: password
         PasswordLength: 16
         ExcludeCharacters: '"@/\'
+
   EC2UserEmailParameter:
     Type: AWS::SSM::Parameter
     Properties:
+      Name: "/emails/ec2-user"
       Type: String
       Value: s3-user-qmg9@gmail.com
+
   S3UserEmailParameter:
     Type: AWS::SSM::Parameter
     Properties:
+      Name: "/emails/s3-user"
       Type: String
       Value: ec2-user-kekn@gmail.com
+
   WelcomeEmailFunction:
     Type: AWS::Lambda::Function
     Properties:
@@ -85,19 +96,22 @@ Resources:
         ZipFile: |
           import boto3
           import json
+
+
           def handler(event, context):
-              ssm = boto3.client('ssm')
-              secretsmanager = boto3.client('secretsmanager')
-              print("running the lambda function...")
-              for record in event['Records']:
-                  if record['detail']['eventName'] == 'CreateUser':
-                      user_name = record['detail']['requestParameters']['userName']
-                      # Get email from Parameter Store
-                      email = ssm.get_parameter(Name=f"/users/{user_name}/email")['Parameter']['Value']
-                      # Get temporary password from Secrets Manager
-                      password = secretsmanager.get_secret_value(SecretId=f"{user_name}Password")['SecretString']
-                      password = json.loads(password)['password']
-                      print(f"User: {user_name}, Email: {email}, Temporary Password: {password}")
+              ssm = boto3.client("ssm")
+              secretsmanager = boto3.client("secretsmanager")
+
+              for record in event["Records"]:
+                  user_name = record["detail"]["userName"]
+                  email_param = f"/emails/{user_name}"
+                  email = ssm.get_parameter(Name=email_param, WithDecryption=False)["Parameter"]["Value"]
+
+                  password = secretsmanager.get_secret_value(SecretId=f"{user_name}Password")["SecretString"]
+                  password = json.loads(password)["password"]
+
+                  print(f"User: {user_name}, Email: {email}, Temporary Password: {password}")
+
   LambdaExecutionRole:
     Type: AWS::IAM::Role
     Properties:
@@ -123,8 +137,10 @@ Resources:
               - Effect: Allow
                 Action:
                   - ssm:GetParameter
+                  - ssm:PutParameter
                   - secretsmanager:GetSecretValue
                 Resource: "*"
+
   NewUserEventRule:
     Type: AWS::Events::Rule
     Properties:
@@ -139,18 +155,20 @@ Resources:
       Targets:
         - Arn: !GetAtt WelcomeEmailFunction.Arn
           Id: WelcomeEmailFunctionTarget
+
   LambdaInvokePermission:
     Type: AWS::Lambda::Permission
     Properties:
-      FunctionName: !Ref WelcomeEmailFunction
       Action: lambda:InvokeFunction
+      FunctionName: !GetAtt WelcomeEmailFunction.Arn
       Principal: events.amazonaws.com
+      SourceArn: !GetAtt NewUserEventRule.Arn
 
 Outputs:
   EC2PasswordSecretArn:
-    Description: ARN of the Secrets Manager secret for EC2User's password
+    Description: EC2User's email & password
     Value: !Sub "Email: {{resolve:ssm:${EC2UserEmailParameter}}}, Password: {{resolve:secretsmanager:${OneTimePassword}::password}}"
 
   S3UserPasswordSecretArn:
-    Description: ARN of the Secrets Manager secret for S3User's password
+    Description: S3User's email & password
     Value: !Sub "Email: {{resolve:ssm:${S3UserEmailParameter}}}, Password: {{resolve:secretsmanager:${OneTimePassword}::password}}"
